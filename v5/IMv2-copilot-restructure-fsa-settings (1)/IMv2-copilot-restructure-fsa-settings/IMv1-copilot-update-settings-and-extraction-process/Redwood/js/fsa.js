@@ -98,87 +98,97 @@ function setupLogbookButton() {
 }
 
 function showLogbookModal() {
-    const logs = fsaState.currentFsaData.auditLogs || [];
+    const logs = (fsaState.currentFsaData.auditLogs || []).slice().sort((a, b) => b.timestamp - a.timestamp);
     const existing = document.getElementById('logbook-modal');
     if (existing) existing.remove();
 
-    const modal = document.createElement("div");
-    modal.id = "logbook-modal";
-    modal.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:10000; display:flex; justify-content:center; align-items:center; backdrop-filter:blur(5px);";
+    const modal = document.createElement('div');
+    modal.id = 'logbook-modal';
+    modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:10000; display:flex; justify-content:center; align-items:center; backdrop-filter:blur(5px);';
 
-  function renderLogDetails(details) {
-    try {
-        const parsed = JSON.parse(details);
-        if (Array.isArray(parsed)) {
-            const keys = Object.keys(parsed[0] || {});
-            const header = `<tr style="background:var(--bg-app)">${keys.map(k =>
-                `<th style="padding:4px 10px;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700;text-align:left">${k}</th>`
-            ).join('')}</tr>`;
-            const bodyRows = parsed.map(row =>
-                `<tr>${keys.map(k =>
-                    `<td style="padding:4px 10px;font-size:12px;color:var(--text-main);border-top:1px solid var(--border-color)">${row[k] ?? ''}</td>`
-                ).join('')}</tr>`
-            ).join('');
-            return `<div style="overflow-x:auto;margin-top:4px"><table style="border-collapse:collapse;width:100%;background:var(--bg-input);border-radius:6px;overflow:hidden">${header}${bodyRows}</table></div>`;
-        } else {
-            const rowsHtml = Object.entries(parsed).map(([k, v]) =>
-                `<div style="display:flex;gap:8px;padding:3px 0;border-bottom:1px solid var(--border-color)">
-                    <span style="color:var(--text-muted);font-size:11px;min-width:90px;text-transform:capitalize">${k}</span>
-                    <span style="color:var(--brand-primary);font-size:12px;font-weight:600">${v}</span>
-                </div>`
-            ).join('');
-            return `<div style="background:var(--bg-input);border-radius:6px;padding:8px 12px;margin-top:4px">${rowsHtml}</div>`;
+    // ── Helper: render details JSON as a readable mini-table or key-value block ──
+    function renderLogDetails(details) {
+        try {
+            const parsed = JSON.parse(details);
+            if (Array.isArray(parsed)) {
+                // Array of objects → table (e.g. multiple mappings/edits)
+                const keys = Object.keys(parsed[0] || {});
+                const header = `<tr style="background:var(--bg-app)">${keys.map(k =>
+                    `<th style="padding:4px 10px;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700;text-align:left">${k}</th>`
+                ).join('')}</tr>`;
+                const bodyRows = parsed.map(row =>
+                    `<tr>${keys.map(k =>
+                        `<td style="padding:4px 10px;font-size:12px;color:var(--text-main);border-top:1px solid var(--border-color)">${row[k] ?? ''}</td>`
+                    ).join('')}</tr>`
+                ).join('');
+                return `<div style="overflow-x:auto;margin-top:6px"><table style="border-collapse:collapse;width:100%;background:var(--bg-input);border-radius:6px;overflow:hidden">${header}${bodyRows}</table></div>`;
+            } else {
+                // Single object → key-value rows (e.g. data entry edit)
+                const rowsHtml = Object.entries(parsed).map(([k, v]) =>
+                    `<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid var(--border-color)">
+                        <span style="color:var(--text-muted);font-size:11px;min-width:90px;flex-shrink:0;text-transform:capitalize">${k}</span>
+                        <span style="color:var(--brand-primary);font-size:12px;font-weight:600">${v}</span>
+                    </div>`
+                ).join('');
+                return `<div style="background:var(--bg-input);border-radius:6px;padding:8px 12px;margin-top:6px">${rowsHtml}</div>`;
+            }
+        } catch {
+            // Plain text fallback (for old logs that aren't JSON)
+            return `<div style="color:var(--brand-primary);font-family:monospace;font-size:12px;background:var(--bg-input);padding:8px;border-radius:6px;margin-top:6px;white-space:pre-wrap;word-break:break-word">${details}</div>`;
         }
-    } catch {
-        return `<div style="color:var(--brand-primary);font-family:monospace;font-size:12px;background:var(--bg-input);padding:8px;border-radius:6px;margin-top:4px">${details}</div>`;
     }
-}
 
-const actionColors = {
-    'PDF Imported':          '#3b82f6',
-    'Item Deleted':          '#ef4444',
-    'Review — Mapped Field': '#f59e0b',
-    'Review — Value Edited': '#a78bfa',
-    'Review Completed':      '#10b981',
-    'Data Entry Edit':       '#10b981',
-    'Source Attached':       '#6366f1',
-};
+    // ── Action badge colour map ──────────────────────────────────────────────────
+    const actionColors = {
+        'PDF Imported':          '#3b82f6',
+        'Item Deleted':          '#ef4444',
+        'Review — Mapped Field': '#f59e0b',
+        'Review — Value Edited': '#a78bfa',
+        'Review Completed':      '#10b981',
+        'Data Entry Edit':       '#10b981',
+        'Source Attached':       '#6366f1',
+    };
 
-let rows = logs.map(l => {
-    const color = actionColors[l.action] || 'var(--brand-primary)';
-    return `
-    <div style="padding:14px 16px; border-bottom:1px solid var(--border-color); font-size:13px; background:var(--bg-surface); border-radius:8px; margin-bottom:8px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:6px; align-items:center;">
-            <strong style="color:${color}; font-size:13px; background:${color}22; padding:2px 10px; border-radius:20px; border:1px solid ${color}44;">${l.action}</strong>
-            <span style="color:var(--text-muted); font-size:11px;">${new Date(l.timestamp).toLocaleString()}</span>
-        </div>
-        <div style="color:var(--text-muted); margin-bottom:6px; display:flex; align-items:center; gap:6px; font-size:12px;">
-            👤 <span>${l.userEmail}</span>
-        </div>
-        ${renderLogDetails(l.details)}
-    </div>`;
-}).join('');
-
-
-    if (!rows) rows = `<div style="padding:30px; color:var(--text-muted); text-align:center; font-size:14px;">No activity logged yet.</div>`;
-
-    modal.innerHTML = `
-        <div class="fsa-card" style="width:650px; max-height:85vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
-            <div style="padding:20px 24px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; background:var(--bg-app);">
-                <h3 style="margin:0; color:var(--text-main); display:flex; align-items:center; gap:8px;">📓 Audit Logbook</h3>
-                <button id="close-logbook" style="background:var(--bg-input); border:none; color:var(--text-muted); font-size:20px; width:32px; height:32px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center;">×</button>
+    // ── Build log rows ───────────────────────────────────────────────────────────
+    let rows = logs.map(l => {
+        const color = actionColors[l.action] || 'var(--brand-primary)';
+        return `
+        <div style="padding:14px 16px;border-bottom:1px solid var(--border-color);font-size:13px;background:var(--bg-surface);border-radius:8px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;align-items:center">
+                <strong style="color:${color};font-size:12px;background:${color}22;padding:2px 10px;border-radius:20px;border:1px solid ${color}44">${l.action}</strong>
+                <span style="color:var(--text-muted);font-size:11px">${new Date(l.timestamp).toLocaleString()}</span>
             </div>
-            <div style="flex:1; overflow-y:auto; padding:20px; background:var(--bg-app);">
+            <div style="color:var(--text-muted);margin-bottom:4px;display:flex;align-items:center;gap:6px;font-size:12px">
+                👤 <span>${l.userEmail}</span>
+            </div>
+            ${renderLogDetails(l.details)}
+        </div>`;
+    }).join('');
+
+    if (!rows) {
+        rows = `<div style="padding:30px;color:var(--text-muted);text-align:center;font-size:14px">No activity logged yet.</div>`;
+    }
+
+    // ── Modal shell ──────────────────────────────────────────────────────────────
+    modal.innerHTML = `
+        <div class="fsa-card" style="width:680px;max-height:85vh;display:flex;flex-direction:column;padding:0;overflow:hidden">
+            <div style="padding:20px 24px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;background:var(--bg-app)">
+                <h3 style="margin:0;color:var(--text-main);display:flex;align-items:center;gap:8px">
+                    📓 Audit Logbook
+                    <span style="font-size:11px;font-weight:400;color:var(--text-muted)">${logs.length} entries</span>
+                </h3>
+                <button id="close-logbook" style="background:var(--bg-input);border:none;color:var(--text-muted);font-size:20px;width:32px;height:32px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center">×</button>
+            </div>
+            <div style="flex:1;overflow-y:auto;padding:20px;background:var(--bg-app)">
                 ${rows}
             </div>
         </div>
     `;
+
     document.body.appendChild(modal);
-
     document.getElementById('close-logbook').onclick = () => modal.remove();
-    modal.onclick = (e) => { if(e.target === modal) modal.remove(); };
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
 }
-
 // ── HELPER: Local slugify ──────────────────────────────────────────
 function slugifyKey(str) {
     if (!str) return '';
